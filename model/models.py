@@ -7,21 +7,13 @@ import math
 # =========================================================
 # Positional Encoding
 # =========================================================
-class PositionalEncoding(nn.Module):
-    def __init__(self, d_model, max_len=1000):
+class LearnablePositionalEncoding(nn.Module):
+    def __init__(self, max_len, d_model):
         super().__init__()
-        pe = torch.zeros(max_len, d_model)
-        position = torch.arange(0, max_len).unsqueeze(1)
-        div_term = torch.exp(
-            torch.arange(0, d_model, 2) *
-            (-math.log(10000.0) / d_model)
-        )
-        pe[:, 0::2] = torch.sin(position * div_term)
-        pe[:, 1::2] = torch.cos(position * div_term)
-        self.register_buffer("pe", pe.unsqueeze(0))
+        self.pos_embed = nn.Parameter(torch.randn(1, max_len, d_model))
 
     def forward(self, x):
-        return x + self.pe[:, :x.size(1)]
+        return x + self.pos_embed[:, :x.size(1)]
 
 
 # =========================================================
@@ -63,7 +55,7 @@ class VIOTransformer(nn.Module):
                  embed_dim=256,
                  depth=6,
                  n_heads=8,
-                 patch_size=16):
+                 patch_size=32):
 
         super().__init__()
 
@@ -77,7 +69,7 @@ class VIOTransformer(nn.Module):
 
         self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
 
-        self.pos_encoding = PositionalEncoding(embed_dim)
+        self.pos_encoding = LearnablePositionalEncoding(max_len=5000, d_model=embed_dim)
 
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=embed_dim,

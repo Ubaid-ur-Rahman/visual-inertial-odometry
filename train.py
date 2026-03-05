@@ -8,10 +8,10 @@ import matplotlib.pyplot as plt
 import torch
 import torch.nn.functional as F
 import torch.utils.data
-import custom_transforms
+import utils.custom_transforms as custom_transforms
 
-from models import VIOTransformer
-from data_loader_euroc import EuRoC_Loader
+from model.models import VIOTransformer
+from dataloader.dataloader import UniversalVIODataset as VIO_Dataset
 
 from scipy.spatial.transform import Rotation
 
@@ -73,36 +73,32 @@ def main():
     # -------------------------
     # Dataset
     # -------------------------
-    train_set = EuRoC_Loader(
-        root=args.data,
-        seed=args.seed,
-        train=1,
-        sequence_length=args.sequence_length,
-        transform=input_transform
-    )
+    train_set = VIO_Dataset(
+            root="/home/ubaid/Downloads/Autonomous_driving/visual-inertial-odometry/dataset/kitti",
+            dataset_type="kitti",
+            sequence_length=3,
+            train=True
+        )
 
-    val_set = EuRoC_Loader(
-        root=args.data,
-        seed=args.seed,
-        train=0,
-        sequence_length=args.sequence_length,
-        transform=input_transform
+    val_set = VIO_Dataset(
+        root="/home/ubaid/Downloads/Autonomous_driving/visual-inertial-odometry/dataset/kitti",
+        dataset_type="kitti",
+        sequence_length=3,
+        train=False
     )
 
     train_loader = torch.utils.data.DataLoader(
         train_set,
-        batch_size=args.batch_size,
+        batch_size=8,
         shuffle=True,
-        num_workers=args.workers,
-        collate_fn=EuRoC_Loader.euroc_collate
+        num_workers=4
     )
 
     val_loader = torch.utils.data.DataLoader(
         val_set,
-        batch_size=args.batch_size,
+        batch_size=8,
         shuffle=False,
-        num_workers=args.workers,
-        collate_fn=EuRoC_Loader.euroc_collate
+        num_workers=4
     )
 
     print(f"{len(train_set)} train samples")
@@ -181,22 +177,23 @@ def train_one_epoch(loader, model, optimizer, epoch, args):
 
     for i, (imgs, imus, poses) in enumerate(loader):
 
-        # Use first and last frame in sequence
-        tgt = imgs[-1].to(device)
-        ref = imgs[0].to(device)
+        tgt = imgs[:, -1].to(device)
+        ref = imgs[:, 0].to(device)
+
         img_pair = torch.cat([tgt, ref], dim=1)
 
-        imu_seq = imus[-1].to(device)
+        imu_seq = imus.to(device)
 
         pred_pose = model(img_pair, imu_seq)
+        poses_np = poses.numpy().astype(np.float64)
 
         gt_trans, gt_quat = compute_trans_pose(
-            poses[0].numpy().astype(np.float64),
-            poses[-1].numpy().astype(np.float64)
+            poses_np[:, 0],
+            poses_np[:, -1]
         )
 
-        gt_translation = torch.tensor(gt_trans, dtype=torch.float32, device=device)
-        gt_quat = torch.tensor(gt_quat, dtype=torch.float32, device=device)
+        gt_translation = torch.from_numpy(gt_trans).float().to(device)
+        gt_quat = torch.from_numpy(gt_quat).float().to(device)
 
         trans_loss = F.mse_loss(pred_pose[:, :3], gt_translation)
 
@@ -230,28 +227,29 @@ def validate(loader, model, epoch):
 
     for imgs, imus, poses in loader:
 
-        tgt = imgs[-1].to(device)
-        ref = imgs[0].to(device)
+        tgt = imgs[:, -1].to(device)
+        ref = imgs[:, 0].to(device)
+        imu_seq = imus.to(device)
+
         img_pair = torch.cat([tgt, ref], dim=1)
-
-        imu_seq = imus[-1].to(device)
-
         pred_pose = model(img_pair, imu_seq)
 
+        # Compute GT for the entire batch
+        poses_np = poses.numpy().astype(np.float64)
         gt_trans, gt_quat = compute_trans_pose(
-            poses[0].numpy().astype(np.float64),
-            poses[-1].numpy().astype(np.float64)
+            poses_np[:, 0],
+            poses_np[:, -1]
         )
 
-        gt_translation = torch.tensor(gt_trans, dtype=torch.float32, device=device)
-        gt_quat = torch.tensor(gt_quat, dtype=torch.float32, device=device)
+        gt_translation = torch.from_numpy(gt_trans).float().to(device)
+        gt_quat = torch.from_numpy(gt_quat).float().to(device)
 
+        # Compute losses
         trans_loss = F.mse_loss(pred_pose[:, :3], gt_translation)
         dot = torch.sum(pred_pose[:, 3:] * gt_quat, dim=1)
         rot_loss = torch.mean(1 - dot.pow(2))
 
         loss = trans_loss + 10.0 * rot_loss
-
         total_loss += loss.item()
 
     return total_loss / len(loader)
