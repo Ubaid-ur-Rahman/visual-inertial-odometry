@@ -34,7 +34,9 @@ class UniversalVIODataset(Dataset):
 
         elif self.dataset_type == "kitti":
             self.samples = self.load_kitti()
-
+        
+        elif self.dataset_type == "tum":
+            self.samples = self.load_tum()
         else:
             raise ValueError("Dataset not supported")
 
@@ -170,6 +172,77 @@ class UniversalVIODataset(Dataset):
                     sample["imus"].append(imu)
 
                 samples.append(sample)
+
+        return samples
+    
+
+    # --------------------------------------------------
+    # TUM VI
+    # --------------------------------------------------
+    def load_tum(self):
+
+        samples = []
+        demi = (self.sequence_length - 1) // 2
+
+        cam0_dir = self.root / "cam0/data"
+        cam1_dir = self.root / "cam1/data"
+
+        ts0_file = self.root / "cam0/timestamps.txt"
+        ts1_file = self.root / "cam1/timestamps.txt"
+
+        imu_file = self.root / "imu0/data.csv"
+
+        if not cam0_dir.exists():
+            raise RuntimeError("cam0 folder not found")
+
+        imgs0 = sorted(cam0_dir.glob("*.png"))
+        imgs1 = sorted(cam1_dir.glob("*.png"))
+
+        ts0 = np.loadtxt(ts0_file)
+        ts1 = np.loadtxt(ts1_file)
+
+        imu_data = pd.read_csv(imu_file)
+
+        imu_ts = imu_data.iloc[:,0].values
+        imu_val = imu_data.iloc[:,1:7].values.astype(np.float32)
+
+        n = min(len(imgs0), len(imgs1))
+
+        for i in range(demi, n - demi):
+
+            sample = {"imgs":[], "imus":[], "poses":[]}
+
+            for j in range(-demi, demi+1):
+
+                idx = i + j
+                ts = ts0[idx]
+
+                sample["imgs"].append(imgs0[idx])
+
+                # TUM VI has no ground truth pose
+                pose = np.eye(3,4,dtype=np.float32)
+                sample["poses"].append(pose)
+
+                if idx < n - 1:
+
+                    next_ts = ts0[idx+1]
+
+                    mask = (imu_ts >= ts) & (imu_ts < next_ts)
+                    imu_seq = imu_val[mask]
+
+                    if len(imu_seq) == 0:
+                        imu_seq = np.zeros((1,6),dtype=np.float32)
+
+                    imu_avg = np.mean(imu_seq, axis=0)
+                    sample["imus"].append(imu_avg)
+
+                else:
+
+                    sample["imus"].append(
+                        np.zeros(6,dtype=np.float32)
+                    )
+
+            samples.append(sample)
 
         return samples
 

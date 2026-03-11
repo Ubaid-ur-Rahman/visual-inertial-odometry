@@ -36,7 +36,6 @@ parser.add_argument('--seed', default=0, type=int)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-
 # =========================================================
 # Main
 # =========================================================
@@ -74,15 +73,15 @@ def main():
     # Dataset
     # -------------------------
     train_set = VIO_Dataset(
-            root="/home/ubaid/Downloads/Autonomous_driving/visual-inertial-odometry/dataset/kitti",
-            dataset_type="kitti",
+            root="/home/ubaid/Downloads/Autonomous_driving/visual-inertial-odometry/dataset/tum",
+            dataset_type="tum",
             sequence_length=3,
             train=True
         )
 
     val_set = VIO_Dataset(
-        root="/home/ubaid/Downloads/Autonomous_driving/visual-inertial-odometry/dataset/kitti",
-        dataset_type="kitti",
+        root="/home/ubaid/Downloads/Autonomous_driving/visual-inertial-odometry/dataset/tum",
+        dataset_type="tum",
         sequence_length=3,
         train=False
     )
