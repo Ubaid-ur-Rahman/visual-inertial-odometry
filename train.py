@@ -10,7 +10,7 @@ import torch.nn.functional as F
 import torch.utils.data
 import utils.custom_transforms as custom_transforms
 
-from model.models import VIOTransformer
+from model.model_cnn_lstm import VIO_CNN_LSTM
 from dataloader.dataloader import UniversalVIODataset as VIO_Dataset
 
 from scipy.spatial.transform import Rotation
@@ -73,15 +73,15 @@ def main():
     # Dataset
     # -------------------------
     train_set = VIO_Dataset(
-            root="/home/ubaid/Downloads/Autonomous_driving/visual-inertial-odometry/dataset/tum",
-            dataset_type="tum",
+            root="/home/ubaid/Downloads/Autonomous_driving/visual-inertial-odometry/dataset/kitti",
+            dataset_type="kitti",
             sequence_length=3,
             train=True
         )
 
     val_set = VIO_Dataset(
-        root="/home/ubaid/Downloads/Autonomous_driving/visual-inertial-odometry/dataset/tum",
-        dataset_type="tum",
+        root="/home/ubaid/Downloads/Autonomous_driving/visual-inertial-odometry/dataset/kitti",
+        dataset_type="kitti",
         sequence_length=3,
         train=False
     )
@@ -106,12 +106,7 @@ def main():
     # -------------------------
     # Model
     # -------------------------
-    model = VIOTransformer(
-        embed_dim=256,
-        depth=6,
-        n_heads=8,
-        patch_size=16
-    ).to(device)
+    model = VIO_CNN_LSTM().to(device)
 
     optimizer = torch.optim.Adam(
         model.parameters(),
