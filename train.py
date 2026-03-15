@@ -10,6 +10,7 @@ import torch.nn.functional as F
 import torch.utils.data
 import utils.custom_transforms as custom_transforms
 
+from model.model_transformer import VIO_TRANSFORMER
 from model.model_cnn_lstm import VIO_CNN_LSTM
 from dataloader.dataloader import UniversalVIODataset as VIO_Dataset
 
@@ -20,11 +21,26 @@ from scipy.spatial.transform import Rotation
 # Argument Parser
 # =========================================================
 parser = argparse.ArgumentParser(
-    description='Transformer-based Visual-Inertial Odometry',
+    description='Visual-Inertial Odometry Training',
     formatter_class=argparse.ArgumentDefaultsHelpFormatter
 )
 
 parser.add_argument('data', metavar='DIR', help='path to dataset')
+
+parser.add_argument(
+    '--dataset',
+    default='kitti',
+    choices=['kitti', 'euroc', 'tum'],
+    help='dataset type'
+)
+
+parser.add_argument(
+    '--model',
+    default='cnn_lstm',
+    choices=['cnn_lstm', 'transformer'],
+    help='model architecture'
+)
+
 parser.add_argument('--sequence-length', type=int, default=3)
 parser.add_argument('-j', '--workers', default=4, type=int)
 parser.add_argument('--epochs', default=100, type=int)
@@ -72,41 +88,56 @@ def main():
     # -------------------------
     # Dataset
     # -------------------------
+    dataset_root = args.data
+    dataset_type = args.dataset
+
+    print(f"Using dataset: {dataset_type}")
+    print(f"Dataset path: {dataset_root}")
+
     train_set = VIO_Dataset(
-            root="/home/ubaid/Downloads/Autonomous_driving/visual-inertial-odometry/dataset/kitti",
-            dataset_type="kitti",
-            sequence_length=3,
-            train=True
-        )
+        root=dataset_root,
+        dataset_type=dataset_type,
+        sequence_length=args.sequence_length,
+        train=True
+    )
 
     val_set = VIO_Dataset(
-        root="/home/ubaid/Downloads/Autonomous_driving/visual-inertial-odometry/dataset/kitti",
-        dataset_type="kitti",
-        sequence_length=3,
+        root=dataset_root,
+        dataset_type=dataset_type,
+        sequence_length=args.sequence_length,
         train=False
     )
 
     train_loader = torch.utils.data.DataLoader(
         train_set,
-        batch_size=8,
+        batch_size=args.batch_size,
         shuffle=True,
-        num_workers=4
+        num_workers=args.workers
     )
 
     val_loader = torch.utils.data.DataLoader(
         val_set,
-        batch_size=8,
+        batch_size=args.batch_size,
         shuffle=False,
-        num_workers=4
+        num_workers=args.workers
     )
 
     print(f"{len(train_set)} train samples")
     print(f"{len(val_set)} val samples")
 
     # -------------------------
-    # Model
+    # Model Selection
     # -------------------------
-    model = VIO_CNN_LSTM().to(device)
+    if args.model == "cnn_lstm":
+        print("Using CNN-LSTM model")
+        model = VIO_CNN_LSTM().to(device)
+
+    elif args.model == "transformer":
+        print("Using Transformer VIO model")
+        model = VIO_TRANSFORMER().to(device)
+
+    else:
+        raise ValueError("Unknown model type")
 
     optimizer = torch.optim.Adam(
         model.parameters(),
