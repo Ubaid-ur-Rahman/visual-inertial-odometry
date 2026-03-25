@@ -1,3 +1,4 @@
 dataset/
 checkpoints/
+evaluation/eval_results/
 __pycache__/

@@ -10,7 +10,6 @@ from tqdm import tqdm
 from model.model_transformer import VIO_TRANSFORMER
 from model.model_cnn_lstm import VIO_CNN_LSTM
 from dataloader.dataloader import UniversalVIODataset as VIO_Dataset
-import utils.custom_transforms as custom_transforms
 
 
 # ────────────────────────────────────────────────
@@ -321,4 +320,10 @@ if __name__ == "__main__":
     main()
 
 # Example – KITTI
-#python evaluate.py /path/to/kitti/dataset  --dataset kitti --model transformer --checkpoint checkpoints/run_XX-XX-XX-XX/best_model.pth --output-dir eval_transformer_kitt
+#python3 -m evaluation.evaluate_model \
+#/home/ubaid/Downloads/Autonomous_driving/visual-inertial-odometry/dataset/kitti \
+#--dataset kitti \
+#--model transformer \
+#--checkpoint pretrained/pretrained_models/kitti_transformer.pth \
+#--output-dir evaluation/eval_results/eval_transformer_kitti
+#4636 samples loaded
