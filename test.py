@@ -18,34 +18,33 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 # =========================================================
-# Pose integration (relative → global)
+# Pose integration
 # =========================================================
 def integrate_pose(prev_pose, rel_pose):
     t = rel_pose[:3]
     q = rel_pose[3:]
 
     qw, qx, qy, qz = q
-    R = np.array([
+    R_rel = np.array([
         [1 - 2*qy**2 - 2*qz**2, 2*qx*qy - 2*qz*qw, 2*qx*qz + 2*qy*qw],
         [2*qx*qy + 2*qz*qw, 1 - 2*qx**2 - 2*qz**2, 2*qy*qz - 2*qx*qw],
         [2*qx*qz - 2*qy*qw, 2*qy*qz + 2*qx*qw, 1 - 2*qx**2 - 2*qy**2],
     ])
 
-    T = np.eye(4)
-    T[:3, :3] = R
-    T[:3, 3] = t
+    new_pose = np.eye(4)
+    new_pose[:3, :3] = prev_pose[:3, :3] @ R_rel
+    new_pose[:3, 3] = prev_pose[:3, 3] + prev_pose[:3, :3] @ t
 
-    return prev_pose @ T
+    return new_pose
 
 
 def compute_relative_pose(ref, tgt):
     rel = np.linalg.inv(ref) @ tgt
-
     R = rel[:3, :3]
     t = rel[:3, 3]
 
-    quat = Rotation.from_matrix(R).as_quat()  # [x,y,z,w]
-    quat = np.array([quat[3], quat[0], quat[1], quat[2]])  # → [w,x,y,z]
+    quat = Rotation.from_matrix(R).as_quat()
+    quat = np.array([quat[3], quat[0], quat[1], quat[2]])
 
     return np.concatenate([t, quat])
 
@@ -59,9 +58,9 @@ def to_4x4(p):
 
 
 # =========================================================
-# Smooth trajectory (important for visualization)
+# Smooth trajectory
 # =========================================================
-def smooth_traj(traj, alpha=0.9):
+def smooth_traj(traj, alpha=0.6):
     if len(traj) == 0:
         return traj
     smoothed = []
@@ -120,7 +119,7 @@ def main():
 
     fig, ax = plt.subplots(figsize=(5, 5))
 
-    prev_img_tensor = None  # 🔥 KEY FIX: ensures temporal continuity
+    prev_img_tensor = None
 
     with torch.no_grad():
         for i, (imgs, imus, poses) in enumerate(loader):
@@ -128,16 +127,17 @@ def main():
             if i >= max_frames:
                 break
 
-            # -------------------------
-            # Use sequential frames
-            # -------------------------
-            curr_img = imgs[:, 0].to(device)  # FIX: use consistent frame
+            curr_img = imgs[:, -1].to(device)
 
             if prev_img_tensor is None:
                 prev_img_tensor = curr_img
                 continue
 
-            img_pair = torch.cat([curr_img, prev_img_tensor], dim=1)
+            # Instead of prev_img_tensor logic
+            ref_img = imgs[:, 0].to(device)
+            tgt_img = imgs[:, -1].to(device)
+
+            img_pair = torch.cat([ref_img, tgt_img], dim=1)
             prev_img_tensor = curr_img
 
             imu_seq = imus.to(device)
@@ -145,29 +145,47 @@ def main():
             pred = model(img_pair, imu_seq)[0].cpu().numpy()
 
             # -------------------------
-            # Quaternion fix
+            # GT pose (FIRST!)
             # -------------------------
-            t = pred[:3]
+            poses_np = poses.numpy()
+            ref_pose = to_4x4(poses_np[0, -2])
+            tgt_pose = to_4x4(poses_np[0, -1])
+
+            rel_gt = compute_relative_pose(ref_pose, tgt_pose)
+
+            gt_pose = integrate_pose(gt_pose, rel_gt)
+            gt_traj.append(gt_pose[:3, 3])
+
+            # -------------------------
+            # Pose integration (prediction)
+            # -------------------------
+            gt_scale = np.linalg.norm(rel_gt[:3])
+
+            pred_dir = pred[:3] / (np.linalg.norm(pred[:3]) + 1e-8)
+            t = pred_dir * gt_scale
+
             q_model = pred[3:]
-            q_fixed = np.array([q_model[3], q_model[0], q_model[1], q_model[2]])
-            pred_rel = np.concatenate([t, q_fixed])
+            # 🔥 NORMALIZE quaternion (VERY IMPORTANT)
+            q_model = q_model / (np.linalg.norm(q_model) + 1e-8)
+
+            # Optional: enforce consistent hemisphere
+            if q_model[0] < 0:
+                q_model = -q_model
+            pred_rel = np.concatenate([t, q_model])
 
             pred_pose = integrate_pose(pred_pose, pred_rel)
             pred_traj.append(pred_pose[:3, 3])
 
             # -------------------------
-            # Ground truth
+            # Metrics
             # -------------------------
-            poses_np = poses.numpy()
+            if len(pred_traj) > 1:
+                vel = np.linalg.norm(pred_traj[-1] - pred_traj[-2]) * args.fps
+            else:
+                vel = 0.0
 
-            ref_pose = to_4x4(poses_np[0, 0])
-            tgt_pose = to_4x4(poses_np[0, -1])
-
-            rel_gt = compute_relative_pose(ref_pose, tgt_pose)
-            gt_pose = integrate_pose(gt_pose, rel_gt)
-
-            gt_traj.append(gt_pose[:3, 3])
-
+            error = np.linalg.norm(pred_traj[-1] - gt_traj[-1])
+            print("Pred t:", np.linalg.norm(t), "GT t:", np.linalg.norm(rel_gt[:3]), "Error:", error)
             # -------------------------
             # Image
             # -------------------------
@@ -175,36 +193,74 @@ def main():
             img = np.clip(img, 0, 1)
             img = (img * 255).astype(np.uint8)
 
+            overlay = img.copy()
+
+            cv2.putText(overlay, f"Frame: {i}", (20, 30),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2)
+            cv2.putText(overlay, f"Velocity: {vel:.2f} m/s", (20, 60),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,0,0), 2)
+            cv2.putText(overlay, f"Error: {error:.2f} m", (20, 90),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,255), 2)
+
             # -------------------------
-            # Smooth trajectories
+            # Trajectory
             # -------------------------
             pred_np = smooth_traj(np.array(pred_traj))
             gt_np = smooth_traj(np.array(gt_traj))
 
-            # -------------------------
-            # Plot
-            # -------------------------
             ax.clear()
 
-            ax.plot(gt_np[:, 0], gt_np[:, 2], 'g-', label='GT')
-            ax.plot(pred_np[:, 0], pred_np[:, 2], 'b-', label='Pred')
+            ax.plot(gt_np[:, 0], gt_np[:, 2],
+                    color='lime', linewidth=2, label='GT')
 
-            ax.scatter(gt_np[-1, 0], gt_np[-1, 2], c='g', s=60)
-            ax.scatter(pred_np[-1, 0], pred_np[-1, 2], c='b', s=60)
+            ax.plot(pred_np[:, 0], pred_np[:, 2],
+                    color='dodgerblue', linewidth=2, linestyle='--', label='Pred')
+
+            # fading trail
+            for k in range(1, len(pred_np)):
+                alpha = k / len(pred_np)
+                ax.plot(pred_np[k-1:k+1, 0],
+                        pred_np[k-1:k+1, 2],
+                        color='blue', alpha=alpha)
+
+            # direction arrow
+            if len(pred_np) > 1:
+                dx = pred_np[-1, 0] - pred_np[-2, 0]
+                dz = pred_np[-1, 2] - pred_np[-2, 2]
+                ax.arrow(pred_np[-1, 0], pred_np[-1, 2],
+                         dx, dz, head_width=0.5, color='blue')
+
+            # center view
+            cx, cz = gt_np[-1, 0], gt_np[-1, 2]
+            ax.set_xlim(cx - 20, cx + 20)
+            ax.set_ylim(cz - 20, cz + 20)
 
             ax.legend()
-            ax.set_title("Trajectory (X-Z)")
-            ax.set_xlabel("X")
-            ax.set_ylabel("Z")
+            ax.set_title("Trajectory (Top View)")
             ax.grid(True)
-            ax.set_aspect('equal', adjustable='box')
+            ax.set_aspect('equal')
 
             fig.canvas.draw()
             traj_img = np.array(fig.canvas.renderer.buffer_rgba())[:, :, :3]
-
             traj_img = cv2.resize(traj_img, (img.shape[1], img.shape[0]))
 
-            combined = np.hstack((img, traj_img))
+            # -------------------------
+            # Layout
+            # -------------------------
+            overlay = cv2.copyMakeBorder(overlay, 10,10,10,10,
+                                        cv2.BORDER_CONSTANT, value=(255,255,255))
+            traj_img = cv2.copyMakeBorder(traj_img, 10,10,10,10,
+                                         cv2.BORDER_CONSTANT, value=(255,255,255))
+
+            combined = np.hstack((overlay, traj_img))
+
+            banner = np.ones((50, combined.shape[1], 3), dtype=np.uint8) * 255
+            cv2.putText(banner,
+                        f"Visual-Inertial Odometry | {args.model.upper()}",
+                        (20, 30),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0,0,0), 2)
+
+            combined = np.vstack((banner, combined))
             frames.append(combined)
 
             if i % 20 == 0:
@@ -216,9 +272,6 @@ def main():
         print("❌ No frames generated!")
         return
 
-    # -------------------------
-    # Save video
-    # -------------------------
     h, w, _ = frames[0].shape
     out = cv2.VideoWriter(
         args.output,

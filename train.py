@@ -205,12 +205,12 @@ def train_one_epoch(loader, model, optimizer, epoch, args):
         tgt = imgs[:, -1].to(device)
         ref = imgs[:, 0].to(device)
 
-        img_pair = torch.cat([tgt, ref], dim=1)
+        img_pair = torch.cat([ref, tgt], dim=1)
 
         imu_seq = imus.to(device)
 
         pred_pose = model(img_pair, imu_seq)
-        poses_np = poses.numpy().astype(np.float64)
+        poses_np = poses.cpu().numpy().astype(np.float64)
 
         gt_trans, gt_quat = compute_trans_pose(
             poses_np[:, 0],
@@ -219,14 +219,26 @@ def train_one_epoch(loader, model, optimizer, epoch, args):
 
         gt_translation = torch.from_numpy(gt_trans).float().to(device)
         gt_quat = torch.from_numpy(gt_quat).float().to(device)
+        
+        gt_norm = torch.norm(gt_translation, dim=1, keepdim=True) + 1e-8
+        pred_norm = torch.norm(pred_pose[:, :3], dim=1, keepdim=True) + 1e-8
 
-        trans_loss = F.mse_loss(pred_pose[:, :3], gt_translation)
+        gt_dir = gt_translation / gt_norm
+        pred_dir = pred_pose[:, :3] / pred_norm
+
+        # Direction loss (important!)
+        dir_loss = F.l1_loss(pred_dir, gt_dir)
+
+        # Scale loss (separate)
+        scale_loss = F.l1_loss(pred_norm, gt_norm)
+
+        trans_loss = dir_loss + 0.5 * scale_loss
 
         # Geodesic quaternion loss
         dot = torch.sum(pred_pose[:, 3:] * gt_quat, dim=1)
         rot_loss = torch.mean(1 - dot.pow(2))
 
-        loss = trans_loss + 10.0 * rot_loss
+        loss = trans_loss + 5.0 * rot_loss
 
         optimizer.zero_grad()
         loss.backward()
@@ -256,11 +268,11 @@ def validate(loader, model, epoch):
         ref = imgs[:, 0].to(device)
         imu_seq = imus.to(device)
 
-        img_pair = torch.cat([tgt, ref], dim=1)
+        img_pair = torch.cat([ref, tgt], dim=1)
         pred_pose = model(img_pair, imu_seq)
 
         # Compute GT for the entire batch
-        poses_np = poses.numpy().astype(np.float64)
+        poses_np = poses.cpu().numpy().astype(np.float64)
         gt_trans, gt_quat = compute_trans_pose(
             poses_np[:, 0],
             poses_np[:, -1]
@@ -274,7 +286,7 @@ def validate(loader, model, epoch):
         dot = torch.sum(pred_pose[:, 3:] * gt_quat, dim=1)
         rot_loss = torch.mean(1 - dot.pow(2))
 
-        loss = trans_loss + 10.0 * rot_loss
+        loss = F.l1_loss(pred_pose[:, :3], gt_translation) + 5.0 * rot_loss
         total_loss += loss.item()
 
     return total_loss / len(loader)
@@ -285,19 +297,28 @@ def validate(loader, model, epoch):
 # =========================================================
 def compute_trans_pose(ref_pose, tgt_pose):
 
-    tmp_pose = np.copy(tgt_pose)
-    tmp_pose[:, :, -1] -= ref_pose[:, :, -1]
+    B = ref_pose.shape[0]
 
-    trans_pose = np.linalg.inv(ref_pose[:, :, :3]) @ tmp_pose
+    # Convert (B, 3, 4) → (B, 4, 4)
+    def to_homogeneous(p):
+        if p.shape[-2:] == (3, 4):
+            bottom = np.tile(np.array([0, 0, 0, 1]), (p.shape[0], 1, 1))
+            return np.concatenate([p, bottom], axis=1)
+        return p
 
-    rel_rot_matrix = trans_pose[:, :3, :3]
-    translations = trans_pose[:, :, -1]
+    ref_pose = to_homogeneous(ref_pose)
+    tgt_pose = to_homogeneous(tgt_pose)
+
+    # Now safe
+    rel_poses = np.linalg.inv(ref_pose) @ tgt_pose
+
+    translations = rel_poses[:, :3, 3]
+    rotations = rel_poses[:, :3, :3]
 
     quats = []
-    for i in range(rel_rot_matrix.shape[0]):
-        rot = Rotation.from_matrix(rel_rot_matrix[i])
-        quat = rot.as_quat()
-        quat = np.array([quat[3], quat[0], quat[1], quat[2]])
+    for i in range(B):
+        quat = Rotation.from_matrix(rotations[i]).as_quat()  # [x,y,z,w]
+        quat = np.array([quat[3], quat[0], quat[1], quat[2]])  # → [w,x,y,z]
         quats.append(quat)
 
     quats = np.array(quats)

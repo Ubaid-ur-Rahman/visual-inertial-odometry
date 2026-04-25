@@ -41,7 +41,8 @@ class UniversalVIODataset(Dataset):
             raise ValueError("Dataset not supported")
 
         # shuffle
-        random.shuffle(self.samples)
+        if train:
+            random.shuffle(self.samples)
 
         # train val split
         split = int(len(self.samples) * train_split)

@@ -262,7 +262,7 @@ class VIO_TRANSFORMER(nn.Module):
         # ----- Vision tokens -----
         feat = self.cnn(img_pair)
         vision_tokens = self.patch_embed(feat)
-        vision_tokens = vision_tokens + self.vision_pos_encoding(vision_tokens)
+        vision_tokens = self.vision_pos_encoding(vision_tokens)
 
         # ----- IMU tokens -----
         imu_tokens = self.imu_encoder(imu_seq)
