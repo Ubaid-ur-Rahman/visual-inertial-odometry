@@ -18,7 +18,7 @@ Below is a sample trajectory output from the Transformer-based model:
 
 > ⚠️ GitHub may not autoplay videos — click to view
 
-<video src="images/smooth_vio.mp4" controls width="100%"></video>
+<video src="https://youtu.be/si0Qimdipdk" controls width="100%"></video>
 
 ---
 
