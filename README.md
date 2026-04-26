@@ -1,119 +1,183 @@
-Visual-Inertial Odometry Transformer 🚗
+# 🚗 Visual-Inertial Odometry (Deep Learning)
 
-A deep learning framework for Visual-Inertial Odometry (VIO) using a Transformer-based sensor fusion architecture.
-The model estimates 6-DoF relative pose (translation + rotation) from:
+A deep learning framework for **Visual-Inertial Odometry (VIO)** using two fundamentally different architectures:
 
-Image pairs
+- 🧠 Transformer-based cross-modal fusion  
+- 🔁 CNN + LSTM recurrent fusion  
 
-IMU measurements
+The system estimates **6-DoF relative pose (translation + rotation)** from:
 
-The system supports multiple datasets through a universal dataloader, currently including:
+- 📷 Image pairs  
+- 📡 IMU measurements  
 
-EuRoC MAV Dataset
+---
 
-KITTI Odometry Dataset
+## 🎥 Demo (Transformer Model)
 
-Overview
+Below is a sample trajectory output from the Transformer-based model:
 
-Visual-Inertial Odometry is a key component of autonomous systems such as:
+> ⚠️ GitHub may not autoplay videos — click to view
 
-self-driving cars
+<video src="images/smooth_vio.mp4" controls width="100%"></video>
 
-drones
+---
 
-robotics
+## 📌 Overview
 
-AR/VR
+Visual-Inertial Odometry is a core component in:
 
-This project implements a Transformer-based VIO model that fuses:
+- 🚗 Autonomous driving  
+- 🚁 Drones  
+- 🤖 Robotics  
+- 🥽 AR/VR  
 
-visual tokens (patch embeddings from images)
+This project explores **two fundamentally different learning paradigms** for VIO:
 
-IMU tokens
+| Model | Type | Fusion Strategy |
+|------|------|----------------|
+| Transformer VIO | Attention-based | Cross-modal attention |
+| CNN + LSTM VIO | Recurrent | Feature concatenation |
 
-inside a unified transformer encoder.
+This enables a **direct comparison between attention vs recurrence** in sensor fusion.
 
-The model predicts the relative pose between frames.
+---
 
-Architecture
+# 🧠 Model 1: Transformer-based VIO (Proposed)
 
-The model consists of:
+## 🔍 Key Features
 
-Vision Patch Embedding
+- Cross-modal attention between vision and IMU  
+- Sinusoidal positional encoding (temporal + spatial)  
+- Pre-layer normalization (stable training)  
+- Bidirectional fusion (vision ↔ IMU)  
+- Global reasoning via Transformer  
 
-Images are split into patches using a convolutional projection similar to a Vision Transformer.
+---
 
-Image pair (6 channels)
-      │
+## 🏗 Architecture
+
+![Transformer Architecture](images/model_transformer.png)
+
+### Pipeline
+Image Pair (6 channels)
+│
+CNN Stem
+│
 Patch Embedding
-      │
-Visual Tokens
-
-IMU Embedding
-
-IMU measurements are embedded into tokens using a linear projection.
-
-IMU sequence
-      │
-Linear Projection
-      │
-IMU Tokens
-
-Transformer Fusion
-
-Visual and IMU tokens are concatenated and passed into a transformer encoder.
-
-[CLS] + Visual Tokens + IMU Tokens
-             │
-        Transformer
-             │
-          CLS token
-
+│
+Vision Tokens ─────────────┐
+│
+Cross
+│
+IMU Sequence → IMU Encoder ┘
+│
+Transformer Encoder
+│
+CLS Token
+│
 Pose Head
 
-The CLS token is used to predict:
 
-Translation (x, y, z)
-Quaternion (qw, qx, qy, qz)
-Installation
+---
 
-Clone the repository:
+## ⚙️ Key Improvements Over Standard ViT
 
+- ✅ CNN feature extractor before patching  
+- ✅ Temporal Transformer for IMU  
+- ✅ Cross-attention fusion (not simple concatenation)  
+- ✅ Pre-LN Transformer (more stable training)  
+- ✅ Learned CLS positional embedding  
+- ✅ Quaternion normalization  
+
+---
+
+# 🔁 Model 2: CNN + LSTM VIO (Baseline)
+
+## 🔍 Key Features
+
+- CNN-based visual feature extraction (FlowNet-style)  
+- IMU encoded via MLP  
+- Temporal modeling via LSTM  
+- Late fusion of visual + IMU features  
+
+---
+
+## 🏗 Architecture
+
+![CNN LSTM Architecture](images/model_cnn_lstm.png)
+
+### Pipeline
+Image Pair
+│
+CNN Encoder
+│
+Visual Features ─────┐
+│
+IMU → MLP Encoder ──┘
+│
+Concatenate
+│
+LSTM
+│
+Fully Connected
+│
+Pose Output
+
+
+
+---
+
+# 🧪 Why Two Models?
+
+This project is designed for **scientific comparison**:
+
+| Property | Transformer | CNN + LSTM |
+|--------|------------|------------|
+| Spatial modeling | Global attention | Local CNN |
+| Temporal modeling | Attention | Recurrence |
+| Fusion | Cross-attention | Concatenation |
+| Parallelism | High | Low |
+| Memory usage | High | Moderate |
+
+---
+
+# 📊 Training Objective
+
+The model predicts:
+[tx, ty, tz, qw, qx, qy, qz]
+
+
+### Loss Function
+
+
+Loss = Translation MSE + 10 × Rotation Loss
+
+
+- Translation → Mean Squared Error  
+- Rotation → Geodesic quaternion loss  
+
+---
+
+# 📦 Installation
+
+```bash
 git clone https://github.com/YOUR_USERNAME/visual-inertial-odometry.git
 cd visual-inertial-odometry
 
-Install dependencies:
-
 pip install -r requirements.txt
-Training
 
-Example training command using the KITTI dataset:
-
-python3 train.py /path/to/dataset/kitti --epochs 10 --batch-size 4
-
-Example:
-
-python3 train.py /home/ubaid/Downloads/Autonomous_driving/visual-inertial-odometry/dataset/kitti --epochs 10 --batch-size 4
-
-During training the script will:
-
-split dataset into train / validation
-
-save best model checkpoint
-
-generate training loss plots
-
-Saved outputs:
-
+🚀 Training
+Example (KITTI)
+python3 train.py /path/to/kitti --epochs 10 --batch-size 4
+Example (EuRoC)
+python3 train.py /path/to/euroc --epochs 10 --batch-size 4
+💾 Training Output
 checkpoints/
    run_TIMESTAMP/
       best_model.pth
       loss_curve.png
-Dataset Support
-
-The project currently supports:
-
-EuRoC MAV Dataset
+🗂 Dataset Support
+1️⃣ EuRoC MAV Dataset
 dataset/
    euroc/
       V2_03_difficult/
@@ -121,93 +185,82 @@ dataset/
             cam0/data/*.png
             imu0/data.csv
             state_groundtruth_estimate0/data.csv
-      MH_02_easy/
-      V1_01_easy/
 
-Dataset link:
+🔗 https://projects.asl.ethz.ch/datasets/doku.php?id=kmavvisualinertialdatasets
 
-https://projects.asl.ethz.ch/datasets/doku.php?id=kmavvisualinertialdatasets
-
-KITTI Odometry Dataset
-
-Expected structure:
-
+2️⃣ KITTI Odometry Dataset
 dataset/
    kitti/
       sequences/
-         00/
-            image_0/*.png
-         01/
-         02/
-      poses/
-         00.txt
-         01.txt
+         00/image_0/*.png
+      poses/00.txt
 
-Dataset link:
+🔗 http://www.cvlibs.net/datasets/kitti/eval_odometry.php
 
-http://www.cvlibs.net/datasets/kitti/eval_odometry.php
+⚠️ Note: KITTI has no IMU → IMU input is zero-filled.
 
-Note:
-
-KITTI odometry dataset does not include IMU data, therefore IMU inputs are filled with zeros.
-
-Project Structure
+🧱 Project Structure
 visual-inertial-odometry
 │
-├── dataloader
+├── dataloader/
 │   └── dataloader.py
 │
-├── model
-│   └── models.py
+├── model/
+│   ├── models.py              # Transformer model
+│   ├── model_cnn_lstm.py     # CNN + LSTM model
 │
-├── utils
+├── utils/
 │   └── custom_transforms.py
+│
+├── images/
+│   ├── model_transformer.png
+│   ├── model_cnn_lstm.png
+│   └── smooth_vio.mp4
 │
 ├── train.py
 ├── requirements.txt
 └── README.md
-Data Processing
+🔄 Data Processing
 
 The dataloader:
 
-loads sequences of images
+Loads image sequences
+Synchronizes IMU data
+Computes relative poses
+Resizes images → 640 × 192
 
-synchronizes IMU data
+Each sample contains:
 
-computes ground truth poses
-
-resizes images to 640 × 192
-
-Each training sample contains:
-
-imgs  -> image sequence
-imus  -> IMU measurements
-poses -> ground truth camera poses
-Training Objective
-
-The model predicts:
-
-[tx, ty, tz, qw, qx, qy, qz]
-
-Loss function:
-
-Loss = Translation MSE + 10 × Rotation Loss
-
-Rotation loss uses geodesic quaternion distance.
-
-Model Details
-
-Transformer parameters:
-
-Embedding dimension : 256
-Transformer layers  : 6
-Attention heads     : 8
-Patch size          : 16
-
-Image resolution:
-
-640 × 192
-Example Training Output
+imgs  → image sequence
+imus  → IMU data
+poses → ground truth
+⚙️ Model Configuration
+Transformer
+Embedding dim: 256
+Layers: 6
+Heads: 8
+Input
+Image: 640 × 192
+IMU sequence length: 3
+📈 Example Training Output
 Epoch 1 | Step 0/2317 | Loss 0.92
 Epoch 1 | Step 10/2317 | Loss 0.71
 Epoch 1 | Step 20/2317 | Loss 0.68
+🧪 Suggested Evaluation Metrics
+
+For proper comparison:
+
+Absolute Trajectory Error (ATE)
+Relative Pose Error (RPE)
+Rotation Error
+Inference speed (FPS)
+GPU memory usage
+🔬 Future Work
+Uncertainty-aware training (partially implemented)
+Multi-scale visual features
+LiDAR + camera fusion
+Self-supervised VIO
+Loop closure integration
+📜 License
+
+MIT License
