@@ -145,29 +145,35 @@ pip install -r requirements.txt
 
 ## Training Output
 Checkpoints and logs are saved in:
-`checkpoints/
+``` bash
+checkpoints/
    run_TIMESTAMP/
       best_model.pth
-      loss_curve.png`
+      loss_curve.png
+```
 
 # 🗂 Dataset Support
 ## 1. EuRoC MAV Dataset
 Expected structure:
-`dataset/
+``` bash
+dataset/
    euroc/
       V2_03_difficult/
          mav0/
             cam0/data/*.png
             imu0/data.csv
-            state_groundtruth_estimate0/data.csv`
+            state_groundtruth_estimate0/data.csv
+```
 
 ## 2. KITTI Odometry Dataset
 Expected structure:
-`dataset/
+``` bash
+dataset/
    kitti/
       sequences/
          00/image_0/*.png
-      poses/00.txt`
+      poses/00.txt
+```
 
 # 🔄 Data Processing
 The dataloader handles:
