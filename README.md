@@ -2,8 +2,8 @@
 
 A deep learning framework for **Visual-Inertial Odometry (VIO)** using two fundamentally different architectures:
 
-- 🧠 Transformer-based cross-modal fusion  
-- 🔁 CNN + LSTM recurrent fusion  
+- 🧠 Transformer-based cross-modal fusion.  
+- 🔁 CNN + LSTM recurrent fusion.  
 
 The system estimates **6-DoF relative pose (translation + rotation)** from:
 
