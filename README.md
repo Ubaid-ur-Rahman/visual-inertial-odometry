@@ -73,6 +73,7 @@ This enables a **direct comparison between attention vs recurrence** in sensor f
 
 # 🔁 Model 2: CNN + LSTM VIO (Baseline)
 
+
 ## 🔍 Key Features
 
 - CNN-based visual feature extraction (FlowNet-style)  
